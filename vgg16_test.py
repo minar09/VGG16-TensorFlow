@@ -37,7 +37,7 @@ print("Number of training labels: ", len(training_GT))
 # Initialize parameters
 
 training_epochs = 30
-batch_size = 5
+batch_size = 32
 image_width = 224
 output_classes = 1000
 

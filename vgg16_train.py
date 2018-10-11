@@ -47,7 +47,7 @@ f.close()
 print("Number of validation images: ", len(validation_GT))
 
 
-training_dataset_size = len(os.listdir(training_dataset_folder))
+#training_dataset_size = len(os.listdir(training_dataset_folder))
 testing_dataset_size = len(os.listdir(testing_dataset_folder))
 validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
@@ -56,7 +56,7 @@ validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 # Initialize parameters
 training_epochs = 10
-batch_size = 5
+batch_size = 32
 image_width = 224
 input_depth = 3
 output_classes = len(training_GT)
@@ -67,11 +67,40 @@ learning_rate = 0.001
 #print("Testing images: ", testing_dataset_size)
 #print("Validation images: ", validation_dataset_size)
 
-class_folders = os.listdir(training_dataset_folder)
-for each in class_folders:
+training_image_folders = os.listdir(training_dataset_folder)
+for each in training_image_folders:
     if ".tar" in each:
-        class_folders.remove(each)
-print("Training folders : ", len(class_folders))
+        training_image_folders.remove(each)
+print("Training folders : ", len(training_image_folders))
+
+
+all_training_images = []
+all_training_image_labels = []
+
+
+def getListOfImages():
+    global all_training_images
+    global all_training_image_labels
+    
+    for f in range(len(training_image_folders)):
+        images = os.listdir(training_dataset_folder + training_image_folders[f])
+        for im in range(len(images)):
+            image_path = training_dataset_folder + training_image_folders[f] + "/" + images[im]
+            all_training_images.append(image_path)
+            all_training_image_labels.append(f + 1)
+            
+    return all_training_images, all_training_image_labels
+            
+            
+def shuffleImagesPath(imagesPathArray, imagesLabelsArray):
+    print("Number of total training images: ", len(imagesPathArray))
+    for i in range(0, len(imagesPathArray)):
+        randomIndex1 = randint(0, len(imagesPathArray)-1)
+        randomIndex2 = randint(0, len(imagesPathArray)-1)
+        imagesPathArray[randomIndex1], imagesPathArray[randomIndex2] = imagesPathArray[randomIndex2], imagesPathArray[randomIndex1]
+        imagesLabelsArray[randomIndex1], imagesLabelsArray[randomIndex2] = imagesLabelsArray[randomIndex2], imagesLabelsArray[randomIndex1]
+    
+    return imagesPathArray, imagesLabelsArray
 
 
 def getNumber(label):
@@ -92,7 +121,7 @@ def decode_image(pathToImage):
     
               
 # Return the batch of training data for next run
-def get_next_batch_of_training_images(class_folder, imagesPathArray, class_number):
+def get_next_batch_of_training_images(imagesPathArray, image_labels):
      
     dataset = np.ndarray(shape=(0, image_width, image_width, input_depth), dtype=np.float32)
     labels = np.ndarray(shape=(0, output_classes), dtype=np.float32)
@@ -100,19 +129,17 @@ def get_next_batch_of_training_images(class_folder, imagesPathArray, class_numbe
     for i in range(len(imagesPathArray)):
 
         try:
-            pathToImage = training_dataset_folder + class_folder + "/" + imagesPathArray[i]
-            #print(pathToImage)
             
-            imarray = decode_image(pathToImage)
+            imarray = decode_image(imagesPathArray[i])
             
             appendingImageArray = np.array([imarray], dtype=np.float32)
-            appendingNumberLabel = np.array([getNumber(class_number)], dtype=np.float32)
+            appendingNumberLabel = np.array([getNumber(image_labels[i])], dtype=np.float32)
             
             #print(appendingImageArray.shape, appendingNumberLabel.shape)
             
             dataset = np.append(dataset, appendingImageArray, axis=0)
             labels = np.append(labels, appendingNumberLabel, axis=0)
-			
+            
         except Exception as err:
             print("Unexpected image - ", imagesPathArray[i], ", skipping...", err)
             
@@ -145,6 +172,9 @@ def get_testing_images(imagesPathArray, labels_array, type="testing"):
             
     return dataset, labels
     
+    
+all_training_images, all_training_image_labels = getListOfImages()
+all_training_images, all_training_image_labels = shuffleImagesPath(all_training_images, all_training_image_labels)
 
             
 # Initialize input and output
@@ -202,47 +232,41 @@ if __name__ == '__main__':
             
             print("\n")
             print("Starting epoch: ", epoch)
-            
-            
-            for i in range(training_dataset_size):
-            
-                training_path = training_dataset_folder + class_folders[i] + "/"
-                print("Training folder path: ", training_path)
-                image_names = os.listdir(training_path)
-                print("Number of images in this folder: ", len(image_names))
-                this_class_label = i + 1
-                #print(this_class_label)
+          
                 
-                start_index = 0
-                num_images = len(image_names)
-                num_steps = round(num_images/batch_size)
+            start_index = 0
+            num_images = len(all_training_images)
+            num_steps = round(num_images/batch_size)
+            
+        
+            for j in range(num_steps):
+        
+                try:
                 
-            
-                for j in range(num_steps):
-            
-                    try:
+                    last_index = start_index + (batch_size - 1)
+                
+                    step_images = all_training_images[start_index:last_index]
+                    step_labels = all_training_image_labels[start_index:last_index]
                     
-                        last_index = start_index + (batch_size - 1)
+                    batch_train_images, batch_train_labels = get_next_batch_of_training_images(step_images, step_labels)
+                    training_data = {x: batch_train_images, y: batch_train_labels}
                     
-                        step_images = image_names[start_index:last_index]
+                    sess.run(optimizer, feed_dict=training_data)
                     
-                        batch_train_images, batch_train_labels = get_next_batch_of_training_images(class_folders[i], image_names, this_class_label)
-                        training_data = {x: batch_train_images, y: batch_train_labels}
-                        sess.run(optimizer, feed_dict=training_data)
-                        
-                        # logging
-                        train_accuracy = accuracy.eval(feed_dict=training_data)
-                        loss_print = loss.eval(feed_dict=training_data)
-                        
-                        train_accuracy_list.append(train_accuracy)
-                        loss_list.append(loss_print)
-                        
-                    except Exception as err:
-                        print("Error in training! Epoch:", epoch, " , Folder:", i, ", Step:", j, err)            
+                    # logging
+                    train_accuracy = accuracy.eval(feed_dict=training_data)
+                    loss_print = cost.eval(feed_dict=training_data)#it doesnt know loss so it come to catch
+                    
+                    train_accuracy_list.append(train_accuracy)
+                    loss_list.append(loss_print)
+                    print(" Epoch:", epoch, ", Step:", j + 1, ", Loss:", loss_print, ", Training Accuracy:", train_accuracy)
+                    
+                except Exception as err:
+                    print("Error in training! Epoch:", epoch, ", Step:", j + 1, err)            
 
-                    start_index = start_index + batch_size
+                start_index = start_index + batch_size
+                
                     
-                        
             training_accuracy = np.mean(train_accuracy_list)
             loss_here = np.mean(loss_list)
             
