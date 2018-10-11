@@ -56,7 +56,7 @@ validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 # Initialize parameters
 training_epochs = 10
-batch_size = 32
+batch_size = 64
 image_width = 224
 input_depth = 3
 output_classes = len(training_GT)
@@ -171,11 +171,8 @@ def get_testing_images(imagesPathArray, labels_array, type="testing"):
             print("Unexpected image - ", imagesPathArray[i], " skipping...", err)
             
     return dataset, labels
-    
-    
-all_training_images, all_training_image_labels = getListOfImages()
-all_training_images, all_training_image_labels = shuffleImagesPath(all_training_images, all_training_image_labels)
 
+    
             
 # Initialize input and output
 x = tf.placeholder(tf.float32, shape=[None, image_width, image_width, input_depth])
@@ -232,6 +229,11 @@ if __name__ == '__main__':
             
             print("\n")
             print("Starting epoch: ", epoch)
+            
+            
+            all_training_images, all_training_image_labels = getListOfImages()
+            all_training_images, all_training_image_labels = shuffleImagesPath(all_training_images, all_training_image_labels)
+            print("Shuffling images for epoch", epoch)
           
                 
             start_index = 0
@@ -304,6 +306,10 @@ if __name__ == '__main__':
             
             print("Training accuracy: ", training_accuracy * 100, ", Loss: ", loss_here, "%, Testing accuracy: ", testing_accuracy * 100, "%, ", epoch, "th epoch.")
             
+            model_path = "/.model/epoch_" + str(epoch) + ".ckpt"
+            epoch_Path = saver.save(sess, model_path)
+            print("Model saved for epoch #", epoch, " at ", epoch_Path)
+            
                 
         print("\n")
         # Ending time
@@ -311,7 +317,7 @@ if __name__ == '__main__':
                 
         # Save trained model
         savedPath = saver.save(sess, saved_model_filepath)
-        print("Model saved at: " ,savedPath)
+        print("Fina model saved at: " , savedPath)
         
             
         print("Learning time: " + str(t2-t1) + " seconds")
