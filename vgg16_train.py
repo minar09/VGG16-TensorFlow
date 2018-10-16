@@ -55,14 +55,15 @@ validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 
 # Initialize parameters
-training_epochs = 10
+training_epochs = 50
 batch_size = 64
-image_width = 224
+input_width = 224
 input_depth = 3
 output_classes = len(training_GT)
 
 learning_rate = 0.001
-
+VGG_MEAN = [123.68, 116.779, 103.939]
+means = tf.reshape(tf.constant(VGG_MEAN), [1, 1, 3])
 
 #print("Testing images: ", testing_dataset_size)
 #print("Validation images: ", validation_dataset_size)
@@ -109,36 +110,86 @@ def getNumber(label):
 
 def decode_image(pathToImage):
     #image = imread(str(pathToImage), mode='RGB')
-    #imarray = imresize(image, (image_width, image_width))
+    #imarray = imresize(image, (input_width, input_width))
+    #print("\nStarting reading image - ", pathToImage)
     imageContents = tf.read_file(str(pathToImage))
-    image = tf.image.decode_jpeg(imageContents, channels=input_depth)
-    
-    resized_image = tf.image.resize_images(image, [image_width, image_width])
+    #print("Starting decoding image")
+    image = tf.image.decode_jpeg(imageContents, channels=3)
+    #print("Starting resizing image")
+    resized_image = tf.image.resize_images(image, [input_width, input_width])
     imarray = resized_image.eval()
-    imarray = imarray.reshape(image_width, image_width, input_depth)
+    #print("Starting reshaping image")
+    imarray = imarray.reshape(input_width, input_width, input_depth)
     
     return imarray
+    
+    
+def _parse_function(filename):
+    image_string = tf.read_file(filename)
+    image_decoded = tf.image.decode_jpeg(image_string, channels=3)          # (1)
+    image = tf.cast(image_decoded, tf.float32)
+
+    smallest_side = 256.0
+    height, width = tf.shape(image)[0], tf.shape(image)[1]
+    height = tf.to_float(height)
+    width = tf.to_float(width)
+
+    scale = tf.cond(tf.greater(height, width),
+                    lambda: smallest_side / width,
+                    lambda: smallest_side / height)
+    new_height = tf.to_int32(height * scale)
+    new_width = tf.to_int32(width * scale)
+
+    resized_image = tf.image.resize_images(image, [new_height, new_width])  # (2)
+    return resized_image.eval()
+    
+    
+def training_preprocess(image):
+    crop_image = tf.random_crop(image, [input_width, input_width, input_depth])                       # (3)
+    flip_image = tf.image.random_flip_left_right(crop_image)                # (4)
+
+    centered_image = flip_image - means                                     # (5)
+
+    return centered_image
+    
+    
+def val_preprocess(image, label):
+    crop_image = tf.image.resize_image_with_crop_or_pad(image, input_width, input_width)    # (3)
+
+    centered_image = crop_image - means                                     # (4)
+
+    return centered_image, label
     
               
 # Return the batch of training data for next run
 def get_next_batch_of_training_images(imagesPathArray, image_labels):
      
-    dataset = np.ndarray(shape=(0, image_width, image_width, input_depth), dtype=np.float32)
+    dataset = np.ndarray(shape=(0, input_width, input_width, input_depth), dtype=np.float32)
     labels = np.ndarray(shape=(0, output_classes), dtype=np.float32)
     
+    #dataset = tf.placeholder(tf.float32, shape=[None, input_width, input_width, input_depth])
+    #labels = tf.placeholder(tf.float32, shape=[None, output_classes])
+
     for i in range(len(imagesPathArray)):
 
         try:
-            
+         
             imarray = decode_image(imagesPathArray[i])
-            
+            imlabel = getNumber(image_labels[i])
+            #image = _parse_function(imagesPathArray[i])
+            #imarray = training_preprocess(image)
+            #print("Starting making array of image")
             appendingImageArray = np.array([imarray], dtype=np.float32)
-            appendingNumberLabel = np.array([getNumber(image_labels[i])], dtype=np.float32)
+            appendingNumberLabel = np.array([imlabel], dtype=np.float32)
+            #appendingImageArray = tf.convert_to_tensor([imarray], dtype=tf.float32)
+            #appendingNumberLabel = tf.convert_to_tensor([imlabel], dtype=tf.float32)
             
             #print(appendingImageArray.shape, appendingNumberLabel.shape)
             
             dataset = np.append(dataset, appendingImageArray, axis=0)
             labels = np.append(labels, appendingNumberLabel, axis=0)
+            #dataset = tf.concat([dataset, appendingImageArray], axis=0)
+            #labels = tf.concat([labels, appendingNumberLabel], axis=0)
             
         except Exception as err:
             print("Unexpected image - ", imagesPathArray[i], ", skipping...", err)
@@ -149,7 +200,7 @@ def get_next_batch_of_training_images(imagesPathArray, image_labels):
             
 def get_testing_images(imagesPathArray, labels_array, type="testing"):
 
-    dataset = np.ndarray(shape=(0, image_width, image_width, input_depth), dtype=np.float32)
+    dataset = np.ndarray(shape=(0, input_width, input_width, input_depth), dtype=np.float32)
     labels = np.ndarray(shape=(0, output_classes), dtype=np.float32)
     
     for i in range(len(imagesPathArray)):
@@ -159,7 +210,9 @@ def get_testing_images(imagesPathArray, labels_array, type="testing"):
             if type == "validation":
                 pathToImage = validation_dataset_folder + imagesPathArray[i]
                 
-            imarray = decode_image(pathToImage)
+            #imarray = decode_image(pathToImage)
+            image = _parse_function(pathToImage)
+            imarray = val_preprocess(image)
             
             appendingImageArray = np.array([imarray], dtype=np.float32)
             appendingNumberLabel = np.array([getNumber(labels_array[i])], dtype=np.float32)
@@ -175,7 +228,7 @@ def get_testing_images(imagesPathArray, labels_array, type="testing"):
     
             
 # Initialize input and output
-x = tf.placeholder(tf.float32, shape=[None, image_width, image_width, input_depth])
+x = tf.placeholder(tf.float32, shape=[None, input_width, input_width, input_depth])
 y = tf.placeholder(tf.float32, shape=[None, output_classes])
 
 
@@ -184,7 +237,7 @@ vgg = vgg16.vgg16(x)
 logits = vgg.logits
 
 
-# Loss function using L2 Regularization
+# Loss function
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=y))
 optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate).minimize(cost)
 
@@ -244,24 +297,39 @@ if __name__ == '__main__':
             for j in range(num_steps):
         
                 try:
-                
+                    print("\nStarting Epoch:", epoch, ", Step:", j + 1)
+                             
+                    try:
+                        if j > 0:
+                            saver.restore(sess, saved_model_filepath)
+                    except Exception as e:
+                        print(e)
+                        
                     last_index = start_index + (batch_size - 1)
                 
                     step_images = all_training_images[start_index:last_index]
                     step_labels = all_training_image_labels[start_index:last_index]
                     
+                    #print("Getting images for Epoch:", epoch, ", Step:", j + 1)
                     batch_train_images, batch_train_labels = get_next_batch_of_training_images(step_images, step_labels)
                     training_data = {x: batch_train_images, y: batch_train_labels}
                     
+                    #print("Starting optimizer for Epoch:", epoch, ", Step:", j + 1)
                     sess.run(optimizer, feed_dict=training_data)
                     
                     # logging
+                    
+                    #print("Getting accuracy and loss for Epoch:", epoch, ", Step:", j + 1)
                     train_accuracy = accuracy.eval(feed_dict=training_data)
-                    loss_print = cost.eval(feed_dict=training_data)#it doesnt know loss so it come to catch
+                    loss_print = cost.eval(feed_dict=training_data)
                     
                     train_accuracy_list.append(train_accuracy)
                     loss_list.append(loss_print)
-                    print(" Epoch:", epoch, ", Step:", j + 1, ", Loss:", loss_print, ", Training Accuracy:", train_accuracy)
+                    print("Epoch:", epoch, ", Step:", j + 1, ", Loss:", loss_print, ", Training Accuracy:", train_accuracy)
+                    
+                    # saving model
+                    savedPath = saver.save(sess, saved_model_filepath)
+                    #print("Model saved at: " , savedPath)
                     
                 except Exception as err:
                     print("Error in training! Epoch:", epoch, ", Step:", j + 1, err)            
@@ -306,10 +374,6 @@ if __name__ == '__main__':
             
             print("Training accuracy: ", training_accuracy * 100, ", Loss: ", loss_here, "%, Testing accuracy: ", testing_accuracy * 100, "%, ", epoch, "th epoch.")
             
-            model_path = "/.model/epoch_" + str(epoch) + ".ckpt"
-            epoch_Path = saver.save(sess, model_path)
-            print("Model saved for epoch #", epoch, " at ", epoch_Path)
-            
                 
         print("\n")
         # Ending time
@@ -317,7 +381,7 @@ if __name__ == '__main__':
                 
         # Save trained model
         savedPath = saver.save(sess, saved_model_filepath)
-        print("Fina model saved at: " , savedPath)
+        print("Final model saved at: " , savedPath)
         
             
         print("Learning time: " + str(t2-t1) + " seconds")

@@ -36,13 +36,15 @@ print("Number of training labels: ", len(training_GT))
 
 # Initialize parameters
 
-training_epochs = 30
+training_epochs = 50
 batch_size = 64
-image_width = 224
+input_width = 224
+input_depth = 3
 output_classes = 1000
 
-training_data_percentage = 0.8
 learning_rate = 0.001
+VGG_MEAN = [123.68, 116.779, 103.939]
+means = tf.reshape(tf.constant(VGG_MEAN), [1, 1, 3])
 
 
 def getNumber(label):
@@ -53,18 +55,57 @@ def getNumber(label):
             
 def decode_image(pathToImage):
     #image = imread(str(pathToImage), mode='RGB')
-    #imarray = imresize(image, (image_width, image_width))
+    #imarray = imresize(image, (input_width, input_width))
     imageContents = tf.read_file(str(pathToImage))
     image = tf.image.decode_jpeg(imageContents, channels=3, dtype=tf.uint8)
-    resized_image = tf.image.resize_images(image, [image_width, image_width, 3])
+    resized_image = tf.image.resize_images(image, [input_width, input_width, input_depth])
     imarray = resized_image.eval()
-    imarray = imarray.reshape(image_width, image_width, 3)
+    imarray = imarray.reshape(input_width, input_width, input_depth)
     
     return imarray
             
             
 
-x = tf.placeholder(tf.float32, shape=[None, image_width, image_width, 3])
+    
+def _parse_function(filename):
+    image_string = tf.read_file(filename)
+    image_decoded = tf.image.decode_jpeg(image_string, channels=3)          # (1)
+    image = tf.cast(image_decoded, tf.float32)
+
+    smallest_side = 256.0
+    height, width = tf.shape(image)[0], tf.shape(image)[1]
+    height = tf.to_float(height)
+    width = tf.to_float(width)
+
+    scale = tf.cond(tf.greater(height, width),
+                    lambda: smallest_side / width,
+                    lambda: smallest_side / height)
+    new_height = tf.to_int32(height * scale)
+    new_width = tf.to_int32(width * scale)
+
+    resized_image = tf.image.resize_images(image, [new_height, new_width])  # (2)
+    return resized_image.eval()
+    
+    
+def training_preprocess(image):
+    crop_image = tf.random_crop(image, [input_width, input_width, input_depth])                       # (3)
+    flip_image = tf.image.random_flip_left_right(crop_image)                # (4)
+
+    centered_image = flip_image - means                                     # (5)
+
+    return centered_image
+    
+    
+def val_preprocess(image, label):
+    crop_image = tf.image.resize_image_with_crop_or_pad(image, input_width, input_width)    # (3)
+
+    centered_image = crop_image - means                                     # (4)
+
+    return centered_image, label
+    
+    
+
+x = tf.placeholder(tf.float32, shape=[None, input_width, input_width, input_depth])
 y = tf.placeholder(tf.float32, shape=[None, output_classes])
 
 
@@ -87,10 +128,12 @@ def main(argv):
     
     with tf.Session() as sess:
     
-        imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
+        imgs = tf.placeholder(tf.float32, [None, input_width, input_width, input_depth])
         vgg = vgg16(imgs, "./model/vgg16.ckpt", sess)
 
         img1 = decode_image(argv)
+        #image = _parse_function(argv)
+        #img1 = val_preprocess(image)
 
         prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
         preds = (np.argsort(prob)[::-1])[0:5]
