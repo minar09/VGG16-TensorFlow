@@ -6,7 +6,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-
+# Import libraries
 import tensorflow as tf
 import numpy as np
 from scipy.misc import imread, imresize
