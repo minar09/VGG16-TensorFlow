@@ -30,6 +30,7 @@ converted_test_data_filepath = "./data/imagenet_test_data.tfrecords"
 converted_val_data_filepath = "./data/imagenet_val_data.tfrecords"
 
 
+train_label_file = './data/labels.txt'
 test_label_file = './data/ILSVRC2012_test_ground_truth.txt'
 validation_label_file = './data/ILSVRC2012_validation_ground_truth.txt'
 
@@ -38,6 +39,12 @@ training_GT = []
 testing_GT = []
 validation_GT = []
 
+
+f = open(train_label_file, 'r')
+training_GT = f.readlines()
+f.close()
+
+print("Number of training labels: ", len(training_GT))
 
 f = open(test_label_file, 'r')
 testing_GT = f.readlines()
@@ -58,6 +65,96 @@ validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 
 
+training_image_folders = os.listdir(training_dataset_folder)
+for each in training_image_folders:
+    if ".tar" in each:
+        training_image_folders.remove(each)
+print("Training folders : ", len(training_image_folders))
+    
+    
+    
+def getListOfImages(training_image_folders):
+    #start = time.time()
+    
+    all_training_images = []
+    all_training_image_labels = []
+    
+    for f in range(len(training_image_folders)):
+        images = os.listdir(training_dataset_folder + training_image_folders[f])
+        for im in range(len(images)):
+            image_path = training_dataset_folder + training_image_folders[f] + "/" + images[im]
+            all_training_images.append(image_path)
+            all_training_image_labels.append(f)
+            
+    #end = time.time()
+    #print("Getting list of images, ", end-start)
+    
+    return all_training_images, all_training_image_labels
+
+    
+        
+# Return the batch of training data for next run
+def get_next_batch_of_training_images(imagesPathArray, image_labels):
+
+    #start = time.time()
+    
+    dataset = np.ndarray(shape=(0, input_width, input_width, input_depth), dtype=np.float32)
+    labels = np.ndarray(shape=(0, output_classes), dtype=np.float32)
+
+    for i in range(len(imagesPathArray)):
+
+        try:
+            
+            imarray = dp.decode_image_opencv(imagesPathArray[i])
+            
+            imlabel = dp.get_label(image_labels[i]) 
+            
+            appendingImageArray = np.array([imarray], dtype=np.float32)
+            
+            appendingNumberLabel = np.array([imlabel], dtype=np.float32)
+            
+            dataset = np.append(dataset, appendingImageArray, axis=0)
+            
+            labels = np.append(labels, appendingNumberLabel, axis=0)
+            
+        except Exception as err:
+            print("Unexpected image - ", imagesPathArray[i], ", skipping...", image_labels[i] , err)
+    
+    #end = time.time()
+    #print("Getting a batch of 64 images, ", end-start)
+    
+    return dataset, labels
+            
+            
+            
+def get_testing_images(imagesPathArray, labels_array, type="testing"):
+
+    dataset = np.ndarray(shape=(0, input_width, input_width, input_depth), dtype=np.float32)
+    labels = np.ndarray(shape=(0, output_classes), dtype=np.float32)
+    
+    for i in range(len(imagesPathArray)):
+
+        try:
+            pathToImage = testing_dataset_folder + imagesPathArray[i]
+            if type == "validation":
+                pathToImage = validation_dataset_folder + imagesPathArray[i]
+                
+            imarray = dp.decode_image_opencv(pathToImage)
+
+            appendingImageArray = np.array([imarray], dtype=np.float32)
+            appendingNumberLabel = np.array([getNumber(labels_array[i])], dtype=np.float32)
+            
+            dataset = np.append(dataset, appendingImageArray, axis=0)
+            labels = np.append(labels, appendingNumberLabel, axis=0)
+        
+        except Exception as err:
+            print("Unexpected image - ", imagesPathArray[i], " skipping...", err)
+            
+    return dataset, labels
+
+
+
+
 
 # Initialize parameters
 training_epochs = 10
@@ -65,13 +162,14 @@ batch_size = 64
 input_width = 224
 input_depth = 3
 display_step = 100
-output_classes = 1000
+output_classes = len(training_GT)
 
 
 learning_rate = 0.001
 VGG_MEAN = [123.68, 116.779, 103.939]
 means = tf.reshape(tf.constant(VGG_MEAN), [1, 1, 3])
 weight_decay = 0.0005
+num_gpu = 2
 
 
 
@@ -112,8 +210,11 @@ if __name__ == '__main__':
     accuracy_history_summary = tf.summary.scalar('training_history', accuracy_history)
     merged_history = tf.summary.merge_all()
 
-    # training images
-    all_training_images, all_training_image_labels = dp.get_training_images()
+    
+    all_training_images, all_training_image_labels = getListOfImages(training_image_folders)
+
+    print("Number of total training images: ", len(all_training_images))
+    
     
     
     # test and validation images
@@ -168,7 +269,7 @@ if __name__ == '__main__':
                     step_images = all_training_images[start_index:last_index]
                     step_labels = all_training_image_labels[start_index:last_index]
                     
-                    batch_train_images, batch_train_labels = dp.get_next_batch_of_training_images(step_images, step_labels)
+                    batch_train_images, batch_train_labels = get_next_batch_of_training_images(step_images, step_labels)
                     
                     training_data = {x: batch_train_images, y: batch_train_labels}
                     
@@ -219,7 +320,7 @@ if __name__ == '__main__':
                     step_labels = validation_GT[start_index:last_index]
 
                     
-                    batch_val_images, batch_val_labels = dp.get_testing_images(step_images, step_labels, "validation")
+                    batch_val_images, batch_val_labels = get_testing_images(step_images, step_labels, "validation")
                     val_data = {x: batch_val_images, y: batch_val_labels}
                     
                     

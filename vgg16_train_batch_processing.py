@@ -30,6 +30,7 @@ converted_test_data_filepath = "./data/imagenet_test_data.tfrecords"
 converted_val_data_filepath = "./data/imagenet_val_data.tfrecords"
 
 
+
 test_label_file = './data/ILSVRC2012_test_ground_truth.txt'
 validation_label_file = './data/ILSVRC2012_validation_ground_truth.txt'
 
@@ -112,13 +113,6 @@ if __name__ == '__main__':
     accuracy_history_summary = tf.summary.scalar('training_history', accuracy_history)
     merged_history = tf.summary.merge_all()
 
-    # training images
-    all_training_images, all_training_image_labels = dp.get_training_images()
-    
-    
-    # test and validation images
-    val_image_names = os.listdir(validation_dataset_folder)
-
     
     
     # Launch graph/Initialize session 
@@ -133,8 +127,6 @@ if __name__ == '__main__':
         writer_test = tf.summary.FileWriter('./model/hist/test',sess.graph)
         writer_loss = tf.summary.FileWriter('./model/hist/loss',sess.graph)
         
-        #end = time.time()
-        #print("Initializing global variables, ", end-start)
         
         # Starting time
         t1 = time.time()
@@ -148,13 +140,9 @@ if __name__ == '__main__':
             
             print("\n")
             print("Starting epoch: ", epoch)
-            
-            # Shuffle images
-            all_training_images, all_training_image_labels = dp.shuffle_images_np(all_training_images, all_training_image_labels)
-            
-         
-            start_index = 0
-            num_images = len(all_training_images)
+   
+   
+            num_images = 1281167
             num_steps = round(num_images / batch_size)
             
         
@@ -163,13 +151,8 @@ if __name__ == '__main__':
                 try:
                     print("\nStarting Epoch:", epoch, ", batch:", j + 1)
                
-                    last_index = start_index + batch_size
-                
-                    step_images = all_training_images[start_index:last_index]
-                    step_labels = all_training_image_labels[start_index:last_index]
-                    
-                    batch_train_images, batch_train_labels = dp.get_next_batch_of_training_images(step_images, step_labels)
-                    
+                    batch_train_images, batch_train_labels = dp.get_next_batch(converted_train_data_filepath)
+                    batch_train_images, batch_train_labels = sess.run([batch_train_images, batch_train_labels])
                     training_data = {x: batch_train_images, y: batch_train_labels}
                     
                     sess.run(optimizer, feed_dict=training_data)
@@ -189,8 +172,6 @@ if __name__ == '__main__':
                 except Exception as err:
                     print("Error in training! Epoch:", epoch, ", batch:", j + 1, err)            
 
-                start_index = start_index + batch_size
-                
                 end = time.time()
                 print("time needed for this batch:", end - start, "seconds")
                 
@@ -207,19 +188,15 @@ if __name__ == '__main__':
             
             # Run validation images
             val_acc_list = []
-            start_index = 0
-            num_images = len(val_image_names)
+
+            num_images = 50000
             num_steps = round(num_images / batch_size)
                 
                 
             for m in range(num_steps):            
                 try:
-                    last_index = start_index + batch_size
-                    step_images = image_names[start_index:last_index]
-                    step_labels = validation_GT[start_index:last_index]
-
                     
-                    batch_val_images, batch_val_labels = dp.get_testing_images(step_images, step_labels, "validation")
+                    batch_val_images, batch_val_labels = dp.get_next_batch(converted_val_data_filepath)
                     val_data = {x: batch_val_images, y: batch_val_labels}
                     
                     
@@ -230,8 +207,6 @@ if __name__ == '__main__':
                 except Exception as err:
                     print("Error in validation step:", m, err)
                     
-                start_index = start_index + batch_size
-
             validation_accuracy = np.mean(val_acc_list)
                 
             writer_test.add_summary(sess.run(merged_history, feed_dict={accuracy_history: validation_accuracy}), epoch)

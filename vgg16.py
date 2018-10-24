@@ -12,6 +12,8 @@ import numpy as np
 from scipy.misc import imread, imresize
 from imagenet_classes import class_names
 
+dropout_ratio = 0.5
+
 
 class vgg16:
     def __init__(self, imgs, weights=None, sess=None):
@@ -210,6 +212,7 @@ class vgg16:
                                padding='SAME',
                                name='pool4')
 
+                               
     def fc_layers(self):
         # fc1
         with tf.name_scope('fc1') as scope:
@@ -221,8 +224,10 @@ class vgg16:
                                  trainable=True, name='biases')
             pool5_flat = tf.reshape(self.pool5, [-1, shape])
             fc1l = tf.nn.bias_add(tf.matmul(pool5_flat, fc1w), fc1b)
-            self.fc1 = tf.nn.relu(fc1l)
+            fc1l = tf.nn.relu(fc1l)
+            self.fc1 = tf.nn.dropout(fc1l, dropout_ratio)
             self.parameters += [fc1w, fc1b]
+            self.fc1w = fc1w
 
         # fc2
         with tf.name_scope('fc2') as scope:
@@ -232,8 +237,10 @@ class vgg16:
             fc2b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
                                  trainable=True, name='biases')
             fc2l = tf.nn.bias_add(tf.matmul(self.fc1, fc2w), fc2b)
-            self.fc2 = tf.nn.relu(fc2l)
+            fc2l = tf.nn.relu(fc2l)
+            self.fc2 = tf.nn.dropout(fc2l, dropout_ratio)
             self.parameters += [fc2w, fc2b]
+            self.fc2w = fc2w
 
         # fc3
         with tf.name_scope('fc3') as scope:
