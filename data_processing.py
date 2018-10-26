@@ -73,7 +73,6 @@ def decode_image_opencv(pathToImage):
         return imarray
         
     except Exception as err:
-    
         print("Exception: ", err)
         return None
     
@@ -268,36 +267,6 @@ def get_testing_images(imagesPathArray, labels_array, type="testing"):
     return dataset, labels
 
 
-def get_next_batch(data_path):
-
-    feature = {'train/image': tf.FixedLenFeature([], tf.string),
-               'train/label': tf.FixedLenFeature([], tf.int64)}
-               
-    # Create a list of filenames and pass it to a queue
-    filename_queue = tf.train.string_input_producer([data_path], num_epochs=1)
-    
-    # Define a reader and read the next record
-    reader = tf.TFRecordReader()
-    _, serialized_example = reader.read(filename_queue)
-    
-    # Decode the record read by the reader
-    features = tf.parse_single_example(serialized_example, features=feature)
-    
-    # Convert the image data from string back to the numbers
-    image = tf.decode_raw(features['train/image'], tf.float32)
-
-    # Cast label data into int32
-    label = tf.cast(features['train/label'], tf.int32)
-    
-    # Reshape image data into the original shape
-    image = tf.reshape(image, [input_width, input_width, input_depth])
-
-    # Any preprocessing here ...
-
-    # Creates batches by randomly shuffling tensors
-    images, labels = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=30, num_threads=1, min_after_dequeue=10)
-
-    return images, labels
     
     
 

@@ -59,14 +59,21 @@ testing_dataset_size = len(os.listdir(testing_dataset_folder))
 validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 
+training_epochs = 10
+batch_size = 64
+input_width = 224
+input_depth = 3
+display_step = 100
+output_classes = 1000
+
 
 
 def _int64_feature(value):
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+  return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
 def _bytes_feature(value):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
 def read_pickle_from_file(filename):
@@ -78,26 +85,38 @@ def read_pickle_from_file(filename):
     return data_dict
 
 
-def convert_to_tfrecord(images, labels, output_file):
+def convert_to_tfrecord(images, labels, output_file, folder_type="training"):
     """Converts a file to TFRecords."""
     print('Generating %s' % output_file)
+    start = time.time()
 
     with tf.python_io.TFRecordWriter(output_file) as record_writer:
 
         for i in range(len(images)):
         
             try:
-        
-                imarray = dp.decode_image_opencv(images[i])
+                with tf.Session() as sess:
                 
-                if imarray is not None:
-                
-                    imlabel = labels[i]
+                    image_path = images[i]
+                    
+                    if folder_type == "validation":
+                        image_path = validation_dataset_folder + images[i]
+                    elif folder_type == "testing":
+                        image_path = testing_dataset_folder + images[i]
+            
+                    #imarray = dp.decode_image_opencv(image_path)
+                    
+                    imarray = dp.decode_image_with_tf(image_path)
+                    #image = imread(str(image_path), mode='RGB')
+                    
+                    #if imarray is not None:
+                    
                     #imlabel = dp.get_label(labels[i])
-
+                    imlabel = int(labels[i])
+                    
                     # Create a feature
-                    feature = {'train/label': _int64_feature(imlabel),
-                               'train/image': _bytes_feature(tf.compat.as_bytes(imarray.tostring()))}
+                    feature = {'label': _int64_feature(imlabel),
+                               'image': _bytes_feature(imarray.tostring())}
                     
                     # Create an example protocol buffer
                     example = tf.train.Example(features=tf.train.Features(feature=feature))
@@ -108,19 +127,13 @@ def convert_to_tfrecord(images, labels, output_file):
             except Exception as err:
                 print("Exception: ", err)
             
+    end = time.time()
+    print("TIme taken: ", end-start, "seconds\n")
+            
       
 def main():
     
-    try:
-        # training images
-        all_training_images, all_training_image_labels = dp.get_training_images()
-        
-        # Convert to tf.train.Example and write the to TFRecords.
-        convert_to_tfrecord(all_training_images, all_training_image_labels, converted_train_data_filepath)
-    except Exception as err:
-        print("Exception: ", err)
-
-
+    
     try:
         # testing images
         test_image_names = os.listdir(testing_dataset_folder)
@@ -129,7 +142,7 @@ def main():
         testing_GT = f.readlines()
         f.close()
         
-        convert_to_tfrecord(test_image_names, testing_GT, converted_test_data_filepath)
+        convert_to_tfrecord(test_image_names, testing_GT, converted_test_data_filepath, "testing")
     except Exception as err:
         print("Exception: ", err)
     
@@ -142,7 +155,17 @@ def main():
         validation_GT = f.readlines()
         f.close()
 
-        convert_to_tfrecord(val_image_names, validation_GT, converted_val_data_filepath)
+        convert_to_tfrecord(val_image_names, validation_GT, converted_val_data_filepath, "validation")
+    except Exception as err:
+        print("Exception: ", err)
+        
+        
+    try:
+        # training images
+        all_training_images, all_training_image_labels = dp.get_training_images()
+        
+        # Convert to tf.train.Example and write the to TFRecords.
+        convert_to_tfrecord(all_training_images, all_training_image_labels, converted_train_data_filepath, "training")
     except Exception as err:
         print("Exception: ", err)
 

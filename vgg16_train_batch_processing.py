@@ -12,7 +12,6 @@ from random import randint
 from scipy.misc import imread, imresize
 from imagenet_classes import class_names
 import vgg16
-import data_processing as dp
 import os, os.path, time
 
 
@@ -28,7 +27,6 @@ saved_model_filepath = "./model/vgg16.ckpt"    # File path for saving the traine
 converted_train_data_filepath = "./data/imagenet_train_data.tfrecords"
 converted_test_data_filepath = "./data/imagenet_test_data.tfrecords"
 converted_val_data_filepath = "./data/imagenet_val_data.tfrecords"
-
 
 
 test_label_file = './data/ILSVRC2012_test_ground_truth.txt'
@@ -59,7 +57,6 @@ validation_dataset_size = len(os.listdir(validation_dataset_folder))
 
 
 
-
 # Initialize parameters
 training_epochs = 10
 batch_size = 64
@@ -70,20 +67,73 @@ output_classes = 1000
 
 
 learning_rate = 0.001
-VGG_MEAN = [123.68, 116.779, 103.939]
-means = tf.reshape(tf.constant(VGG_MEAN), [1, 1, 3])
 weight_decay = 0.0005
 
 
 
+def parser(record):
+    keys_to_features = {
+        "image": tf.FixedLenFeature((), tf.string, default_value=""),
+        "label": tf.FixedLenFeature((), tf.int64,
+                                    default_value=tf.zeros([], dtype=tf.int64)),
+    }
+    parsed = tf.parse_single_example(record, keys_to_features)
+
+    # Perform additional preprocessing on the parsed data.
+    #image = tf.image.decode_jpeg(parsed["image"])
+    image = tf.decode_raw(parsed['image'], tf.float32)
+    print(image.shape)
+    image = tf.reshape(image, [input_width, input_width, input_depth])
+    image = tf.cast(image, tf.float32)
+    
+    label = tf.cast(parsed["label"], tf.float32)
+    #label = tf.one_hot(label, output_classes)
+    
+    print(image.shape, label.shape)
+
+    return image, label
+
+
+# Prepare dataset
+filenames = [converted_test_data_filepath, converted_val_data_filepath]
+dataset = tf.data.TFRecordDataset(filenames)
+
+# Use `tf.parse_single_example()` to extract data from a `tf.Example`
+# protocol buffer, and perform any additional per-record preprocessing.
+
+
+# Use `Dataset.map()` to build a pair of a feature dictionary and a label
+# tensor for each example.
+dataset = dataset.map(parser)
+dataset = dataset.cache()
+dataset = dataset.shuffle(buffer_size=10000)
+dataset = dataset.batch(batch_size)
+dataset = dataset.repeat(training_epochs)
+
+# Each element of `dataset` is tuple containing a dictionary of features
+# (in which each value is a batch of values for that feature), and a batch of
+# labels.
+
+
+iterator = dataset.make_one_shot_iterator()
+#iterator = dataset.make_initializable_iterator()
+x, y = iterator.get_next()
+
+#loss = model_function(next_example, next_label)
+
+        
+
+
 # Initialize input and output
-x = tf.placeholder(tf.float32, shape=[None, input_width, input_width, input_depth])
-y = tf.placeholder(tf.float32, shape=[None, output_classes])
+#x = tf.placeholder(tf.float32, shape=[None, input_width, input_width, input_depth])
+#y = tf.placeholder(tf.float32, shape=[None, output_classes])
+
 
 
 # model
 vgg = vgg16.vgg16(x)
 logits = vgg.logits
+
 
 
 # Loss function
@@ -102,7 +152,37 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 # Define model saver
 saver = tf.train.Saver()
+
     
+    
+    
+"""feature = {'image': tf.FixedLenFeature([], tf.string),
+       'label': tf.FixedLenFeature([], tf.int64)}
+       
+# Create a list of filenames and pass it to a queue
+filename_queue = tf.train.string_input_producer([converted_test_data_filepath], num_epochs=training_epochs)
+
+# Define a reader and read the next record
+reader = tf.TFRecordReader()
+_, serialized_example = reader.read(filename_queue)
+
+# Decode the record read by the reader
+features = tf.parse_single_example(serialized_example, features=feature)
+
+# Convert the image data from string back to the numbers
+image = tf.decode_raw(features['image'], tf.float32)
+
+# Cast label data into int32
+label = tf.cast(features['label'], tf.int32)
+
+# Reshape image data into the original shape
+image = tf.reshape(image, [input_width, input_width, input_depth])
+
+# one-hot encoding for label
+label = tf.one_hot(label, output_classes)"""
+
+
+
     
 
 
@@ -118,7 +198,7 @@ if __name__ == '__main__':
     # Launch graph/Initialize session 
     with tf.Session() as sess:
         
-        #start = time.time()
+        
         print("Initializing global variables...")
         
         sess.run(tf.global_variables_initializer())
@@ -132,7 +212,14 @@ if __name__ == '__main__':
         t1 = time.time()
         
         
-        for epoch in range(1, training_epochs + 1):
+        for i in range(training_epochs):
+            print("Starting Epoch", i)
+            try:
+                sess.run(optimizer)
+            except Exception as err:
+                print(err)
+    
+        """for epoch in range(1, training_epochs + 1):
             start_epoch = time.time()
             train_accuracy_list = []
             test_accuracy_list = []
@@ -142,8 +229,14 @@ if __name__ == '__main__':
             print("Starting epoch: ", epoch)
    
    
-            num_images = 1281167
-            num_steps = round(num_images / batch_size)
+            #num_images = 1281167
+            num_images = 100000
+            num_steps = num_images // batch_size
+            
+            
+            # Create a coordinator and run all QueueRunner objects
+            coord = tf.train.Coordinator()
+            threads = tf.train.start_queue_runners(coord=coord)
             
         
             for j in range(num_steps):
@@ -151,11 +244,18 @@ if __name__ == '__main__':
                 try:
                     print("\nStarting Epoch:", epoch, ", batch:", j + 1)
                
-                    batch_train_images, batch_train_labels = dp.get_next_batch(converted_train_data_filepath)
+                    #batch_train_images, batch_train_labels = dp.get_next_batch(converted_test_data_filepath)
+                    
+                    # Creates batches by randomly shuffling tensors
+                    batch_train_images, batch_train_labels = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=30, num_threads=1, min_after_dequeue=10)
+
+                    #print(batch_train_images.shape, batch_train_labels.shape)
                     batch_train_images, batch_train_labels = sess.run([batch_train_images, batch_train_labels])
                     training_data = {x: batch_train_images, y: batch_train_labels}
                     
                     sess.run(optimizer, feed_dict=training_data)
+                    #sess.run(optimizer, [batch_train_images, batch_train_labels])
+                    #sess.run(batch_train_images, batch_train_labels)
                     
                     
                     # saving model, accuracy and loss
@@ -186,11 +286,18 @@ if __name__ == '__main__':
             print("Model saved after epoch ", epoch, " at: " , savedPath)
             
             
+            # Stop the threads
+            coord.request_stop()
+            
+            # Wait for threads to stop
+            coord.join(threads)
+            
+            
             # Run validation images
             val_acc_list = []
 
             num_images = 50000
-            num_steps = round(num_images / batch_size)
+            num_steps = num_images // batch_size
                 
                 
             for m in range(num_steps):            
@@ -226,7 +333,7 @@ if __name__ == '__main__':
         print("Final model saved at: " , savedPath)
         
             
-        print("Learning time: " + str(t2-t1) + " seconds")
+        print("Learning time: " + str(t2-t1) + " seconds")"""
         
 
         

@@ -155,7 +155,7 @@ if __name__ == '__main__':
          
             start_index = 0
             num_images = len(all_training_images)
-            num_steps = round(num_images / batch_size)
+            num_steps = num_images // batch_size
             
         
             for j in range(num_steps):
@@ -209,7 +209,7 @@ if __name__ == '__main__':
             val_acc_list = []
             start_index = 0
             num_images = len(val_image_names)
-            num_steps = round(num_images / batch_size)
+            num_steps = num_images // batch_size
                 
                 
             for m in range(num_steps):            
