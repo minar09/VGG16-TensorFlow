@@ -104,25 +104,25 @@ def convert_to_tfrecord(images, labels, output_file, folder_type="training"):
                     elif folder_type == "testing":
                         image_path = testing_dataset_folder + images[i]
             
-                    #imarray = dp.decode_image_opencv(image_path)
+                    imarray = dp.decode_image_opencv(image_path)
                     
-                    imarray = dp.decode_image_with_tf(image_path)
+                    #imarray = dp.decode_image_with_tf(image_path)
                     #image = imread(str(image_path), mode='RGB')
                     
-                    #if imarray is not None:
+                    if imarray is not None:
                     
-                    #imlabel = dp.get_label(labels[i])
-                    imlabel = int(labels[i])
-                    
-                    # Create a feature
-                    feature = {'label': _int64_feature(imlabel),
-                               'image': _bytes_feature(imarray.tostring())}
-                    
-                    # Create an example protocol buffer
-                    example = tf.train.Example(features=tf.train.Features(feature=feature))
+                        #imlabel = dp.get_label(labels[i])
+                        imlabel = int(labels[i])
+                        
+                        # Create a feature
+                        feature = {'label': _int64_feature(imlabel),
+                                   'image': _bytes_feature(imarray.tostring())}
+                        
+                        # Create an example protocol buffer
+                        example = tf.train.Example(features=tf.train.Features(feature=feature))
 
-                    # Serialize to string and write on the file
-                    record_writer.write(example.SerializeToString())
+                        # Serialize to string and write on the file
+                        record_writer.write(example.SerializeToString())
 
             except Exception as err:
                 print("Exception: ", err)

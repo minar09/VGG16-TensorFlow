@@ -10,53 +10,23 @@ import tensorflow as tf
 import numpy as np
 from random import randint
 from scipy.misc import imread, imresize
-from imagenet_classes import class_names
 
-dataset_folder = "D:/Dataset/Imagenet2012/"
-training_dataset_folder = "D:/Dataset/Imagenet2012/Images/ILSVRC2012_img_train/"
-testing_dataset_folder = "D:/Dataset/Imagenet2012/Images/ILSVRC2012_img_test/"
-validation_dataset_folder = "D:/Dataset/Imagenet2012/Images/ILSVRC2012_img_val/"
-
-test_label_file = './data/ILSVRC2012_test_ground_truth.txt'
-validation_label_file = './data/ILSVRC2012_validation_ground_truth.txt'
-train_selected_file = './data/train_selected.txt'
-
-training_GT = []
-testing_GT = []
-validation_GT = []
-selected_classes = []
-
-#training_dataset_size = 1281167
-training_dataset_size = 103732
-testing_dataset_size = len(os.listdir(testing_dataset_folder))
-validation_dataset_size = len(os.listdir(validation_dataset_folder))
-
-# Get labels/GT for test data
-f = open(test_label_file, 'r')
-testing_GT = f.readlines()
-f.close()
-#print("Number of testing images: ", len(testing_GT))
-
-# Get labels/GT for validation data
-f = open(validation_label_file, 'r')
-validation_GT = f.readlines()
-#print(validation_GT)
-f.close()
-#print("Number of validation images: ", len(validation_GT))
-
-# Get selected classes
-selected_classes = [1,2,8,13,21,24,32,37,49,63,71,79,84,99,109,122,130,145,184,277,284,292,306,314,319,328,331,340,356,366,388,397,402,407,409,412,417,430,440,448,457,468,480,498,515,539,563,579,587,604,610,614,620,624,632,637,640,651,655,668,673,691,707,713,723,736,764,812,852,861,879,883,916,928,937,947,954,963,980,999]
-print("Number of selected classes: ", len(selected_classes))
+dataset_folder = "D:/Dataset/coco-animals/"
+training_dataset_folder = "D:/Dataset/coco-animals/train/"
+validation_dataset_folder = "D:/Dataset/coco-animals/val/"
+saved_model_filepath = "./model/coco/vgg16-coco.ckpt"    # File path for saving the trained model
 
 # Initialize parameters
-training_epochs = 50
+training_epochs = 10
+batch_size = 32
 input_width = 224
 input_depth = 3
-#output_classes = 1000
-output_classes = 80
+display_step = 10
+output_classes = 8
 
 VGG_MEAN = [123.68, 116.779, 103.939]
 means = tf.reshape(tf.constant(VGG_MEAN), [1, 1, 3])
+weight_decay = 0.0005
 
 
 # Get label number from 0 to 999 for the given label name
@@ -93,7 +63,7 @@ def decode_image_with_tf(pathToImage):
     imarray = imarray.reshape(input_width, input_width, input_depth)
     
     return imarray
-            
+
 
 # Read and parse (resize, rescale) image using TensorFlow
 def _parse_function(filename):
@@ -173,21 +143,13 @@ def get_list_of_training_data(training_image_folders):
     all_training_images = []
     all_training_image_labels = []
     
-    #for f in range(len(training_image_folders)):
-    #for f in range(5):
-    label = 0    # class label for selected classes, otherwise folder iteration number
-    for f in selected_classes:
-        #print(f)
+    for f in range(len(training_image_folders)):
         images = os.listdir(training_dataset_folder + training_image_folders[f])
         for im in range(len(images)):
-        #for im in range(10):
             image_path = training_dataset_folder + training_image_folders[f] + "/" + images[im]
+            #print(f, image_path)
             all_training_images.append(image_path)
-            #all_training_image_labels.append(f)
-            all_training_image_labels.append(label)
-            #print(label, image_path)
-            
-        label = label + 1    # label increment for selected classes
+            all_training_image_labels.append(f)
             
     return all_training_images, all_training_image_labels
 
@@ -197,18 +159,14 @@ def _get_training_images():
     # Start time for listing training images
     start = time.time()
     training_image_folders = os.listdir(training_dataset_folder)
-    
     for each in training_image_folders:
         if ".tar" in each:
             training_image_folders.remove(each)
-        
-    #print("Training folders : ", len(training_image_folders))
+    print("Training folders : ", len(training_image_folders))
 
     all_training_images, all_training_image_labels = get_list_of_training_data(training_image_folders)
 
-    training_dataset_size = len(all_training_images)
-    
-    print("Number of total training images: ", training_dataset_size)
+    print("Number of total training images: ", len(all_training_images))
     print("Time for gathering training data:", "{0:.2f}".format(time.time()-start), "sec")
         
     return all_training_images, all_training_image_labels
@@ -278,15 +236,14 @@ def _parse_jpeg(filename, label):
     try:
         image_string = tf.read_file(filename)
         image_decoded = tf.image.decode_jpeg(image_string, channels=3)
-        #image_resized = tf.image.resize_images(image_decoded, [input_width, input_width])
-        image_resized_with_crop_pad = tf.image.resize_image_with_crop_or_pad(image_decoded, input_width, input_width)
+        image_resized = tf.image.resize_images(image_decoded, [input_width, input_width])
         #
         # ... More preprocessing ...
+        crop_image = tf.random_crop(image_resized, [input_width, input_width, input_depth])
+        flip_image = tf.image.random_flip_left_right(crop_image)
         #
-        image_flipped = tf.image.random_flip_left_right(image_resized_with_crop_pad)
-        
+        image = tf.cast(flip_image, tf.float32)
         #image = tf.cast(image_resized, tf.float32)
-        image = tf.cast(image_flipped, tf.float32)
         
         #label = tf.cast(label, tf.float32)
         label = tf.one_hot(label, output_classes)
@@ -311,66 +268,23 @@ def _parse_jpeg(filename, label):
   
 """    
     
-def create_raw_dataset(data_type="training"):
+def create_raw_dataset():
     
     # 1. Setup the file list and labels in list format    
     # A vector of filenames.
     print("Generating the dataset...")
-    
-    if data_type == "training":
-    
-        images_path_list = []
-        images_label_list = []        
-        image_names, image_labels = _get_training_images()
-        image_names, image_labels = shuffle_images_np(image_names, image_labels)  # do not need do it here, there is suffle method in dataset
 
-        filenames = tf.constant(image_names)
-        labels = tf.constant(image_labels)     
-        print("Raw dataset:", filenames.shape, labels.shape)
-        dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-        
-        return dataset
+    images_path_list = []
+    images_label_list = []        
+    image_names, image_labels = _get_images()
     
+    filenames = tf.constant(image_names)
+    labels = tf.constant(image_labels)     
+    print("Raw dataset:", filenames.shape, labels.shape)
+    dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
     
-    elif data_type == "validation":
+    return dataset
     
-        val_images_path_list = []
-        val_images_label_list = []
-    
-        image_names = os.listdir(validation_dataset_folder)
-        for i in range(len(image_names)):
-        #for i in range(1000):
-            fname = os.path.join(validation_dataset_folder + image_names[i])
-            val_images_path_list.append(fname)
-            val_images_label_list.append(int(validation_GT[i].split("\n")[0]))
-
-        filenames = tf.constant(val_images_path_list)
-
-        labels = tf.constant(val_images_label_list)
-        print("Raw dataset:", filenames.shape, labels.shape)
-        dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-        return dataset
-        
-    elif data_type == "testing":
-        images_path_list = []
-        images_label_list = []
-        image_names = os.listdir(testing_dataset_folder)
-        
-        for i in range(len(image_names)):
-            fname = os.path.join(testing_dataset_folder + image_names[i])
-            images_path_list.append(fname)
-            images_label_list.append(int(testing_GT[i].split("\n")[0]))
-            
-        filenames = tf.constant(images_path_list)
-            
-        #labels = tf.constant(testing_GT)
-        labels = tf.constant(images_label_list)
-        
-        print("Raw dataset:", filenames.shape, labels.shape)
-
-        dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-
-        return dataset
 
 #
 # add preprocessing option to the dataset 
@@ -381,13 +295,47 @@ def add_pipeline(dataset, batchsz, num, nthread):
 
     try:
         dataset = dataset.map(_parse_jpeg, num_parallel_calls = nthread)
-        #dataset = dataset.cache()
         #dataset = dataset.repeat(training_epochs)
-        #dataset = dataset.shuffle(buffer_size=num)
+        dataset = dataset.shuffle(buffer_size=num)
         dataset = dataset.batch(batchsz)     
         dataset = dataset.prefetch(batchsz)  # preload dataset (image decoding) 
-        
         return dataset
     except Exception as err:
         print(err)
         
+
+# Get data and labels for coco-animals dataset
+def _get_images():
+    # Start time for listing images
+    start = time.time()
+
+    training_image_folders = os.listdir(training_dataset_folder)
+
+    all_training_images = []
+    all_training_image_labels = []
+    
+    for f in range(len(training_image_folders)):
+    
+        # training folder
+        images = os.listdir(training_dataset_folder + training_image_folders[f])
+        for im in range(len(images)):
+            image_path = training_dataset_folder + training_image_folders[f] + "/" + images[im]
+            #print(f, image_path)
+            all_training_images.append(image_path)
+            all_training_image_labels.append(f)
+            
+        # validation folder
+        images = os.listdir(validation_dataset_folder + training_image_folders[f])
+        for im in range(len(images)):
+            image_path = validation_dataset_folder + training_image_folders[f] + "/" + images[im]
+            #print(f, image_path)
+            all_training_images.append(image_path)
+            all_training_image_labels.append(f)
+
+    print("Number of total images: ", len(all_training_images))
+        
+    return all_training_images, all_training_image_labels
+        
+    print("Time for gathering data:", "{0:.2f}".format(time.time()-start), "sec")
+
+    
