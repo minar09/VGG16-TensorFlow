@@ -34,7 +34,8 @@ output_classes = 80   # labels/types/classes of input images
 
 #learning_rate = 0.00001   # default learning rate
 global_step = tf.Variable(0, trainable=False)
-starter_learning_rate = 0.01
+#starter_learning_rate = 0.01
+starter_learning_rate = 0.00001
 learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step, 100000, 0.1, staircase=True)
 
 start = time.time()   # Start time for initializing dataset and pipelining
