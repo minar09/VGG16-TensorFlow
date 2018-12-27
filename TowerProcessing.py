@@ -1,14 +1,17 @@
 
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'   # Hide the warning messages about CPU/GPU
-
-import os.path, time, re
-import tensorflow as tf
-import numpy as np
-from random import randint
-from scipy.misc import imread, imresize
-from imagenet_classes import class_names
+import re
+import time
+import os.path
 import vgg16
+from imagenet_classes import class_names
+from scipy.misc import imread, imresize
+from random import randint
+import numpy as np
+import tensorflow as tf
+import os
+# Hide the warning messages about CPU/GPU
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 
 # Initialize parameters
 training_epochs = 10
@@ -54,8 +57,8 @@ def tower_loss(scope, images, labels):
     # Attach a scalar summary to all individual losses and the total loss; do the
     # same for the averaged version of the losses.
     for l in losses + [total_loss]:
-    # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
-    # session. This helps the clarity of presentation on tensorboard.
+        # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
+        # session. This helps the clarity of presentation on tensorboard.
     loss_name = re.sub('tower_[0-9]*/', l.op.name)
     tf.summary.scalar(loss_name, l)
 
@@ -77,15 +80,15 @@ def average_gradients(tower_grads):
     """
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+        # Note that each grad_and_vars looks like the following:
+        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads = []
     for g, _ in grad_and_vars:
-      # Add 0 dimension to the gradients to represent the tower.
-      expanded_g = tf.expand_dims(g, 0)
+        # Add 0 dimension to the gradients to represent the tower.
+        expanded_g = tf.expand_dims(g, 0)
 
-      # Append on a 'tower' dimension which we will average over below.
-      grads.append(expanded_g)
+        # Append on a 'tower' dimension which we will average over below.
+        grads.append(expanded_g)
 
     # Average over the 'tower' dimension.
     grad = tf.concat(axis=0, values=grads)
@@ -97,10 +100,10 @@ def average_gradients(tower_grads):
     v = grad_and_vars[0][1]
     grad_and_var = (grad, v)
     average_grads.append(grad_and_var)
-    
+
     return average_grads
 
-    
+
 def loss(logits, labels):
     """Add L2Loss to all the trainable variables.
 
@@ -116,7 +119,7 @@ def loss(logits, labels):
     # Calculate the average cross entropy loss across the batch.
     labels = tf.cast(labels, tf.int64)
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits, name='cross_entropy_per_example')
+        labels=labels, logits=logits, name='cross_entropy_per_example')
     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
     tf.add_to_collection('losses', cross_entropy_mean)
 
@@ -144,8 +147,8 @@ def _add_loss_summaries(total_loss):
     # Attach a scalar summary to all individual losses and the total loss; do the
     # same for the averaged version of the losses.
     for l in losses + [total_loss]:
-    # Name each loss as '(raw)' and name the moving average version of the loss
-    # as the original loss name.
+        # Name each loss as '(raw)' and name the moving average version of the loss
+        # as the original loss name.
     tf.summary.scalar(l.op.name + ' (raw)', l)
     tf.summary.scalar(l.op.name, loss_averages.average(l))
 
@@ -171,10 +174,10 @@ def train(total_loss, global_step):
 
     # Decay the learning rate exponentially based on the number of steps.
     lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
-                                  global_step,
-                                  decay_steps,
-                                  LEARNING_RATE_DECAY_FACTOR,
-                                  staircase=True)
+                                    global_step,
+                                    decay_steps,
+                                    LEARNING_RATE_DECAY_FACTOR,
+                                    staircase=True)
     tf.summary.scalar('learning_rate', lr)
 
     # Generate moving averages of all losses and associated summaries.
@@ -195,17 +198,17 @@ def train(total_loss, global_step):
     # Add histograms for gradients.
     for grad, var in grads:
     if grad is not None:
-      tf.summary.histogram(var.op.name + '/gradients', grad)
+        tf.summary.histogram(var.op.name + '/gradients', grad)
 
     # Track the moving averages of all trainable variables.
     variable_averages = tf.train.ExponentialMovingAverage(
-      MOVING_AVERAGE_DECAY, global_step)
+        MOVING_AVERAGE_DECAY, global_step)
     with tf.control_dependencies([apply_gradient_op]):
     variables_averages_op = variable_averages.apply(tf.trainable_variables())
 
     return variables_averages_op
 
-    
+
 def _activation_summary(x):
     """Helper to create summaries for activations.
 
@@ -222,7 +225,7 @@ def _activation_summary(x):
     tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
     tf.summary.histogram(tensor_name + '/activations', x)
     tf.summary.scalar(tensor_name + '/sparsity',
-                                       tf.nn.zero_fraction(x))
+                      tf.nn.zero_fraction(x))
 
 
 def _variable_on_cpu(name, shape, initializer):
@@ -260,9 +263,9 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
     """
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     var = _variable_on_cpu(
-      name,
-      shape,
-      tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+        name,
+        shape,
+        tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
     if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)

@@ -59,6 +59,7 @@ def build(input_tensor, n_classes=1000, rgb_mean=None, training=True):
     net = L.fully_connected(net, name="fc3", n_out=n_classes)
     return net
 
+
 if __name__ == '__main__':
     x = tf.placeholder(tf.float32, [10, 224, 224, 3])
     net = build(x)
